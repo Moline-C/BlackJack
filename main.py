@@ -1,170 +1,142 @@
 import pygame
 import os
-import random
+from p1_random import P1Random
 
-# Initialize Pygame
 pygame.init()
 
-# Set up display
-screen_width = 800
-screen_height = 600
-screen = pygame.display.set_mode((screen_width, screen_height))
+SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Blackjack")
 
-# Load images (background, card back, etc.)
 background = pygame.image.load(os.path.join("images", "background.png"))
-background = pygame.transform.scale(background, (screen_width, screen_height))
+background = pygame.transform.scale(background, (SCREEN_WIDTH, SCREEN_HEIGHT))
 
 card_back = pygame.image.load(os.path.join("images", "back.png"))
-card_back = pygame.transform.scale(card_back, (100, 150))  # Adjust size of card back
+card_back = pygame.transform.scale(card_back, (100, 150))
+deck_image = pygame.transform.scale(card_back, (80, 120))
 
-# Load sound (card sound)
 card_sound = pygame.mixer.Sound(os.path.join("assets", "sounds", "card-sound.wav"))
 
-# Load card images (example for hearts)
-def load_card_image(rank, suit):
-    # Special case for Ace
-    if rank == 1:
-        rank = "ace"
-    elif rank == 11:
-        rank = "jack"
-    elif rank == 12:
-        rank = "queen"
-    elif rank == 13:
-        rank = "king"
+rng = P1Random()
 
-    card_image = pygame.image.load(os.path.join("images", suit, f"{rank}-{suit}.png"))
-    return pygame.transform.scale(card_image, (100, 150))  # Adjust card size
+CARD_IMAGES = {}
+suits = ['hearts', 'diamonds', 'spades', 'clubs']
+for suit in suits:
+    for rank in range(1, 14):
+        rank_name = {1:"ace",11:"jack",12:"queen",13:"king"}.get(rank, str(rank))
+        path = os.path.join("images", suit, f"{rank_name}-{suit}.png")
+        CARD_IMAGES[(rank, suit)] = pygame.transform.scale(pygame.image.load(path), (100, 150))
 
+player_win = dealer_win = game_ties = 0
 
-# Game variables
-game_num = 0
-player_win = 0
-dealer_win = 0
-game_ties = 0
-player_hand = 0
-dealer_hand = 0
-current_game_in_progress = False  # Flag to track if the game is in progress
-player_cards = []  # List to keep track of the player's cards
-dealer_cards = []
-
-def print_game_stats():
-    total_games = player_win + dealer_win + game_ties
-    print(f"Number of Player wins: {player_win}")
-    print(f"Number of Dealer wins: {dealer_win}")
-    print(f"Number of tie games: {game_ties}")
-    print(f"Total # of games played is: {total_games}")
-    if total_games > 0:
-        percent_of_player_wins = (player_win / total_games) * 100
-        print(f"Percentage of Player wins: {percent_of_player_wins:.1f}%")
-    print()
-
-def draw_text(text, position, font_size=24):
-    font = pygame.font.Font(None, font_size)
-    text_surface = font.render(text, True, (255, 255, 255))  # White text
-    screen.blit(text_surface, position)
+def draw_text(text, pos, size=24, color=(255,255,255)):
+    font = pygame.font.Font(None, size)
+    surface = font.render(text, True, color)
+    screen.blit(surface, pos)
 
 def calculate_hand_value(cards):
-    """ Calculate the total value of the hand (Ace = 1 or 11, face cards = 10). """
-    value = 0
-    ace_count = 0
-    for card in cards:
-        card_rank = card[0]  # The first value in card is rank
-        if card_rank == 1:
-            value += 11  # Ace starts as 11
-            ace_count += 1
-        elif card_rank > 10:
-            value += 10  # Face cards (Jack, Queen, King) are worth 10
+    value, aces = 0, 0
+    for rank, _ in cards:
+        if rank == 1:
+            value += 11
+            aces += 1
+        elif rank > 10:
+            value += 10
         else:
-            value += card_rank  # Cards 2-10 are worth their face value
-
-    # Adjust for Aces (Ace = 11 or Ace = 1)
-    while value > 21 and ace_count > 0:
-        value -= 10  # Convert Ace from 11 to 1
-        ace_count -= 1
-
+            value += rank
+    while value > 21 and aces:
+        value -= 10
+        aces -= 1
     return value
 
+def draw_cards(cards, y_pos, hide_all=False):
+    spacing = 120
+    start_x = (SCREEN_WIDTH - len(cards)*spacing)//2
+    for i, card in enumerate(cards):
+        x = start_x + i*spacing
+        if hide_all:
+            screen.blit(card_back, (x, y_pos))
+        else:
+            screen.blit(CARD_IMAGES[card], (x, y_pos))
 
-# Main game loop
-in_progress = True  # Set this to True to start the game
-while in_progress:
-    if not current_game_in_progress:  # Only start a new game when not in progress
-        game_num += 1
-        print(f"START GAME #{game_num}")
+def print_stats():
+    total = player_win + dealer_win + game_ties
+    print(f"Player wins: {player_win}, Dealer wins: {dealer_win}, Ties: {game_ties}")
+    if total > 0:
+        print(f"Player win rate: {player_win/total*100:.1f}%\n")
 
-        # Reset player hand for new game
-        player_hand = 0
-        dealer_hand = 0
-        player_cards = []  # Reset player's cards
-        dealer_cards = []  # Reset dealer's cards
+def draw_random_card():
+    rank = rng.next_int(13) + 1
+    suit = suits[rng.next_int(4)]
+    return (rank, suit)
 
-        # Randomly choose a card for the player
-        player_card = random.randint(1, 13)  # Card from 1 to 13
-        player_suit = random.choice(['hearts', 'diamonds', 'spades', 'clubs'])
+def animate_draw(card, start_pos, end_pos, is_dealer=False):
+    steps = 10
+    dx = (end_pos[0]-start_pos[0])/steps
+    dy = (end_pos[1]-start_pos[1])/steps
+    for i in range(steps):
+        screen.blit(background,(0,0))
+        draw_text("1. Draw Card",(20,20))
+        draw_text("2. Hold Hand",(20,50))
+        draw_text("3. Print Stats",(20,80))
+        draw_text("4. Exit",(20,110))
+        draw_cards(player_cards, SCREEN_HEIGHT-180)
+        draw_cards(dealer_cards, 50, hide_all=True)
+        draw_text(f"Your hand: {calculate_hand_value(player_cards)}",(SCREEN_WIDTH-150, SCREEN_HEIGHT-230))
+        screen.blit(deck_image,(SCREEN_WIDTH-100, SCREEN_HEIGHT//2-60))
+        if is_dealer:
+            screen.blit(card_back, (start_pos[0]+dx*i, start_pos[1]+dy*i))
+        else:
+            screen.blit(CARD_IMAGES[card], (start_pos[0]+dx*i, start_pos[1]+dy*i))
+        pygame.display.flip()
+        pygame.time.wait(30)
 
-        # Load the player's first card image and play the sound
-        player_card_image = load_card_image(player_card, player_suit)
-        card_sound.play()
+menu_positions = [(20, 20), (20, 50), (20, 80), (20, 110)]
 
-        # Add the card to player's hand
-        player_cards.append((player_card, player_suit))  # Save the card rank and suit
-        player_hand = calculate_hand_value(player_cards)
+running = True
+current_game = False
+player_cards, dealer_cards = [], []
 
-        #dealer
-        # Randomly choose a card for the dealer
-        dealer_card = random.randint(1, 13)
-        dealer_suit = random.choice(['hearts', 'diamonds', 'spades', 'clubs'])
+while running:
+    mouse_click = False
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mouse_click = True
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_1:
+                choice = 1
+            elif event.key == pygame.K_2:
+                choice = 2
+            elif event.key == pygame.K_3:
+                choice = 3
+            elif event.key == pygame.K_4:
+                choice = 4
 
-        # Add the dealer's first card to the dealer's hand
-        dealer_cards.append((dealer_card, dealer_suit))  # Save the card rank and suit
+    if not current_game:
+        player_cards = [draw_random_card()]
+        dealer_cards = [draw_random_card()]
+        current_game = True
 
-        # Randomly choose a card for the dealer (face-down card)
-        dealer_card = random.randint(1, 13)
-        dealer_suit = random.choice(['hearts', 'diamonds', 'spades', 'clubs'])
-
-        # Set the game state to in progress
-        current_game_in_progress = True
-
-    # Draw the background only once for each game
-    screen.blit(background, (0, 0))
-
-    # Draw game options
-    draw_text("1. Draw Card", (20, 20))
-    draw_text("2. Hold Hand", (20, 50))
-    draw_text("3. Print Stats", (20, 80))
-    draw_text("4. Exit", (20, 110))
-
-    # Draw player's cards in the middle
-    card_spacing = 120  # Adjust the spacing between cards
-    start_x = (screen_width - len(player_cards) * card_spacing) // 2  # Calculate the starting X position to center cards
-    for idx, card in enumerate(player_cards):
-        x_pos = start_x + idx * card_spacing  # Calculate X position for each card
-        screen.blit(load_card_image(card[0], card[1]), (x_pos, screen_height - 180))  # Draw the card
-
-    # Draw dealer's cards in the same way as the player's cards (centered and spaced evenly)
-    # Draw dealer's cards (all face-down)
-    card_spacing = 120  # Adjust the spacing between cards
-    start_x = (screen_width - len(
-        dealer_cards) * card_spacing) // 2  # Calculate the starting X position to center the cards
-
-    for idx, card in enumerate(dealer_cards):
-        x_pos = start_x + idx * card_spacing  # Calculate X position for each card
-        screen.blit(card_back, (x_pos, 50))  # Draw every card as face-down
-
-    # Adjust the Y position for the player's hand score text
-    draw_text(f"Your hand: {player_hand}", (screen_width - 150, screen_height - 230))
-
-    # Display updated screen
+    screen.blit(background,(0,0))
+    draw_text("1. Draw Card", menu_positions[0])
+    draw_text("2. Hold Hand", menu_positions[1])
+    draw_text("3. Print Stats", menu_positions[2])
+    draw_text("4. Exit", menu_positions[3])
+    draw_cards(player_cards, SCREEN_HEIGHT-180)
+    draw_cards(dealer_cards, 50, hide_all=True)
+    draw_text(f"Your hand: {calculate_hand_value(player_cards)}", (SCREEN_WIDTH-150, SCREEN_HEIGHT-230))
+    deck_rect = deck_image.get_rect(topright=(SCREEN_WIDTH-20, SCREEN_HEIGHT//2-60))
+    screen.blit(deck_image, deck_rect)
     pygame.display.flip()
 
-    # Wait for user input with no delay (this part was previously delayed)
     choice = None
-    while choice not in [1, 2, 3, 4]:
+    while choice not in [1,2,3,4]:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                in_progress = False
-            if event.type == pygame.KEYDOWN:
+                choice = 4
+            elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_1:
                     choice = 1
                 elif event.key == pygame.K_2:
@@ -173,81 +145,84 @@ while in_progress:
                     choice = 3
                 elif event.key == pygame.K_4:
                     choice = 4
-        pygame.time.wait(50)  # Small delay just to keep the loop responsive
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if deck_rect.collidepoint(event.pos):
+                    choice = 1
+        pygame.time.wait(50)
 
-    if choice == 1:  # Draw another card
+    if choice == 1:
+        new_player_card = draw_random_card()
+        player_cards.append(new_player_card)
+        animate_draw(new_player_card,(SCREEN_WIDTH-100, SCREEN_HEIGHT//2-60),
+                     ((SCREEN_WIDTH-120)//2 + (len(player_cards)-1)*120, SCREEN_HEIGHT-180))
         card_sound.play()
 
-        # Player draws a card
-        player_card = random.randint(1, 13)
-        player_suit = random.choice(['hearts', 'diamonds', 'spades', 'clubs'])
-        player_card_image = load_card_image(player_card, player_suit)
-        player_cards.append((player_card, player_suit))  # Save the card rank and suit
-        player_hand = calculate_hand_value(player_cards)
+        new_dealer_card = draw_random_card()
+        dealer_cards.append(new_dealer_card)
+        animate_draw(new_dealer_card,(SCREEN_WIDTH-100, SCREEN_HEIGHT//2-60),
+                     ((SCREEN_WIDTH-120)//2 + (len(dealer_cards)-1)*120, 50), is_dealer=True)
+        card_sound.play()
 
-        # Dealer draws a card
-        dealer_card = random.randint(1, 13)
-        dealer_suit = random.choice(['hearts', 'diamonds', 'spades', 'clubs'])
-        dealer_cards.append((dealer_card, dealer_suit))  # Add card to dealer's hand
+        player_val = calculate_hand_value(player_cards)
+        dealer_val = calculate_hand_value(dealer_cards)
 
-        # Check if player hits 21 and automatically wins
-        if player_hand == 21:
-            player_win += 1
-            draw_text("You hit 21! You win automatically!", (300, 300))
-            pygame.display.flip()
-            pygame.time.wait(1000)  # Shortened automatic win delay
-            current_game_in_progress = False
-
-        # Check if player exceeds 21 and loses
-        elif player_hand > 21:
+        if player_val > 21:
             dealer_win += 1
-            draw_text("You exceeded 21! You lose.", (300, 300))
-            pygame.display.flip()
-            pygame.time.wait(1000)  # Wait before starting new game
-            current_game_in_progress = False
-
-    elif choice == 2:  # Hold hand
-        # Dealer's play
-        dealer_hand = random.randint(17, 23)  # Dealer draws between 17 and 23
-        screen.blit(background, (0, 0))  # Clear screen
-        # Redraw dealer's face-up card
-        screen.blit(load_card_image(dealer_card, dealer_suit), (screen_width // 2 - 50, 50))  # Dealer's card
-        # Redraw player's cards centered
-        for idx, card in enumerate(player_cards):
-            x_pos = start_x + idx * card_spacing  # Calculate the X position for centered cards
-            screen.blit(load_card_image(card[0], card[1]), (x_pos, screen_height - 180))  # Draw player cards
-
-        # Display hands
-        draw_text(f"Dealer's hand: {dealer_hand}", (screen_width - 150, 50))
-        draw_text(f"Your hand: {player_hand}", (screen_width - 150, screen_height - 180))
-
-        # Determine winner
-        if player_hand > 21:
+            game_over_msg = "Bust! Dealer wins."
+            current_game = False
+        elif dealer_val > 21:
+            player_win += 1
+            game_over_msg = "Dealer bust! You win!"
+            current_game = False
+        elif player_val == 21:
+            player_win += 1
+            game_over_msg = "Blackjack! You win!"
+            current_game = False
+        elif dealer_val == 21:
             dealer_win += 1
-            draw_text("You exceeded 21! You lose.", (300, 300))
-        elif player_hand == 21:
+            game_over_msg = "Dealer hits 21! Dealer wins."
+            current_game = False
+        else:
+            game_over_msg = None
+
+        if game_over_msg:
+            screen.blit(background,(0,0))
+            draw_cards(player_cards, SCREEN_HEIGHT-180)
+            draw_cards(dealer_cards,50)
+            draw_text(f"Your hand: {player_val}", (SCREEN_WIDTH-150, SCREEN_HEIGHT-230))
+            draw_text(f"Dealer hand: {dealer_val}", (SCREEN_WIDTH-150,50))
+            draw_text(game_over_msg, (300,300),36)
+            pygame.display.flip()
+            pygame.time.wait(3500)
+
+    elif choice == 2:
+        player_val = calculate_hand_value(player_cards)
+        dealer_val = calculate_hand_value(dealer_cards)
+        screen.blit(background,(0,0))
+        draw_cards(player_cards, SCREEN_HEIGHT-180)
+        draw_cards(dealer_cards,50)
+        draw_text(f"Your hand: {player_val}", (SCREEN_WIDTH-150, SCREEN_HEIGHT-230))
+        draw_text(f"Dealer hand: {dealer_val}", (SCREEN_WIDTH-150,50))
+        if player_val > 21:
+            dealer_win += 1
+            result = "Bust! Dealer wins."
+        elif dealer_val > 21 or player_val > dealer_val:
             player_win += 1
-            draw_text("You win with Blackjack!", (300, 300))
-        elif dealer_hand > 21 or player_hand > dealer_hand:
-            player_win += 1
-            draw_text("You win!", (300, 300))
-        elif player_hand == dealer_hand:
+            result = "You win!"
+        elif player_val == dealer_val:
             game_ties += 1
-            draw_text("It's a tie!", (300, 300))
+            result = "It's a tie!"
         else:
             dealer_win += 1
-            draw_text("Dealer wins!", (300, 300))
-
-        player_cards.clear()  # Clear the player's cards for the next game
-        dealer_cards.clear()  # Clear the dealer's cards for the next game
-
+            result = "Dealer wins!"
+        draw_text(result,(300,300),36)
         pygame.display.flip()
-        pygame.time.wait(1000)  # Wait before starting a new game
-        current_game_in_progress = False
+        pygame.time.wait(3500)
+        current_game = False
 
-    elif choice == 3:  # Print stats
-        print_game_stats()
+    elif choice == 3:
+        print_stats()
 
-    elif choice == 4:  # Exit
-        in_progress = False
+    elif choice == 4:
+        running = False
         pygame.quit()
