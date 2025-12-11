@@ -34,6 +34,20 @@ def draw_text(text, pos, size=24, color=(255,255,255)):
     surface = font.render(text, True, color)
     screen.blit(surface, pos)
 
+def draw_text_centered(text, y, size=24, color=(255,255,255)):
+    font = pygame.font.Font(None, size)
+    surface = font.render(text, True, color)
+    x = (SCREEN_WIDTH - surface.get_width()) // 2
+    screen.blit(surface, (x, y))
+
+def draw_text_centered_shadow(text, y, size=24, color=(255,255,255)):
+    font = pygame.font.Font(None, size)
+    surface = font.render(text, True, color)
+    shadow = font.render(text, True, (0, 0, 0))
+    x = (SCREEN_WIDTH - surface.get_width()) // 2
+    screen.blit(shadow, (x+2, y+2))
+    screen.blit(surface, (x, y))
+
 def calculate_hand_value(cards):
     value, aces = 0, 0
     for rank, _ in cards:
@@ -59,12 +73,6 @@ def draw_cards(cards, y_pos, hide_all=False):
         else:
             screen.blit(CARD_IMAGES[card], (x, y_pos))
 
-def print_stats():
-    total = player_win + dealer_win + game_ties
-    print(f"Player wins: {player_win}, Dealer wins: {dealer_win}, Ties: {game_ties}")
-    if total > 0:
-        print(f"Player win rate: {player_win/total*100:.1f}%\n")
-
 def draw_random_card():
     rank = rng.next_int(13) + 1
     suit = suits[rng.next_int(4)]
@@ -78,7 +86,7 @@ def animate_draw(card, start_pos, end_pos, is_dealer=False):
         screen.blit(background,(0,0))
         draw_text("1. Draw Card",(20,20))
         draw_text("2. Hold Hand",(20,50))
-        draw_text("3. Print Stats",(20,80))
+        draw_text("3. Show Stats",(20,80))
         draw_text("4. Exit",(20,110))
         draw_cards(player_cards, SCREEN_HEIGHT-180)
         draw_cards(dealer_cards, 50, hide_all=True)
@@ -91,11 +99,80 @@ def animate_draw(card, start_pos, end_pos, is_dealer=False):
         pygame.display.flip()
         pygame.time.wait(30)
 
+def show_start_screen():
+    card_width, card_height = 150, 210
+    card_surface = pygame.Surface((card_width, card_height), pygame.SRCALPHA)
+    pygame.draw.rect(card_surface, (255, 255, 255, 220), (0, 0, card_width, card_height), border_radius=12)
+    pygame.draw.rect(card_surface, (0, 0, 0), (0, 0, card_width, card_height), 3, border_radius=12)
+
+    img_path = os.path.join("images", "king_face.png")
+    if os.path.exists(img_path):
+        img = pygame.image.load(img_path).convert_alpha()
+        img = pygame.transform.smoothscale(img, (card_width - 40, card_height - 60))
+        img_rect = img.get_rect(center=(card_width//2, card_height//2))
+        card_surface.blit(img, img_rect)
+    else:
+        font = pygame.font.Font(None, 48)
+        king_text = font.render("K♥", True, (200, 0, 0))
+        king_rect = king_text.get_rect(center=(card_width//2, card_height//2))
+        card_surface.blit(king_text, king_rect)
+
+    card_surface = pygame.transform.rotate(card_surface, -25)
+    card_rect = card_surface.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 50))
+
+    waiting = True
+    while waiting:
+        screen.blit(background, (0, 0))
+        screen.blit(card_surface, card_rect)
+        draw_text_centered_shadow("Welcome to Blackjack!", 150, 64)
+        draw_text_centered_shadow("Test your luck and beat the dealer!", 250, 36)
+        draw_text_centered_shadow("Press any key or click to start", 400, 28)
+        pygame.display.flip()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            elif event.type == pygame.KEYDOWN or (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1):
+                waiting = False
+        pygame.time.wait(50)
+
+def show_stats_screen():
+    popup = pygame.Surface((500, 400))
+    popup.set_alpha(0)
+    popup.fill((0,0,0))
+    alpha = 0
+    while alpha < 200:
+        alpha += 10
+        popup.set_alpha(alpha)
+        screen.blit(background, (0,0))
+        screen.blit(popup, (150,100))
+        total = player_win + dealer_win + game_ties
+        draw_text_centered("Game Stats", 130, 48)
+        draw_text_centered(f"Player wins: {player_win}", 180, 36)
+        draw_text_centered(f"Dealer wins: {dealer_win}", 230, 36)
+        draw_text_centered(f"Ties: {game_ties}", 280, 36)
+        if total > 0:
+            draw_text_centered(f"Player win rate: {player_win / total * 100:.1f}%", 330, 36)
+        draw_text_centered("Press any key or click to return", 400, 24)
+        pygame.display.flip()
+        pygame.time.wait(30)
+    waiting = True
+    while waiting:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            elif event.type == pygame.KEYDOWN or (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1):
+                waiting = False
+        pygame.time.wait(50)
+
 menu_positions = [(20, 20), (20, 50), (20, 80), (20, 110)]
 
 running = True
 current_game = False
 player_cards, dealer_cards = [], []
+
+show_start_screen()
 
 while running:
     mouse_click = False
@@ -122,7 +199,7 @@ while running:
     screen.blit(background,(0,0))
     draw_text("1. Draw Card", menu_positions[0])
     draw_text("2. Hold Hand", menu_positions[1])
-    draw_text("3. Print Stats", menu_positions[2])
+    draw_text("3. Show Stats", menu_positions[2])
     draw_text("4. Exit", menu_positions[3])
     draw_cards(player_cards, SCREEN_HEIGHT-180)
     draw_cards(dealer_cards, 50, hide_all=True)
@@ -191,9 +268,9 @@ while running:
             draw_cards(dealer_cards,50)
             draw_text(f"Your hand: {player_val}", (SCREEN_WIDTH-150, SCREEN_HEIGHT-230))
             draw_text(f"Dealer hand: {dealer_val}", (SCREEN_WIDTH-150,50))
-            draw_text(game_over_msg, (300,300),36)
+            draw_text_centered_shadow(game_over_msg, 300,36)
             pygame.display.flip()
-            pygame.time.wait(3500)
+            pygame.time.wait(3000)
 
     elif choice == 2:
         player_val = calculate_hand_value(player_cards)
@@ -215,13 +292,13 @@ while running:
         else:
             dealer_win += 1
             result = "Dealer wins!"
-        draw_text(result,(300,300),36)
+        draw_text_centered_shadow(result, 300,36)
         pygame.display.flip()
-        pygame.time.wait(3500)
+        pygame.time.wait(3000)
         current_game = False
 
     elif choice == 3:
-        print_stats()
+        show_stats_screen()
 
     elif choice == 4:
         running = False
